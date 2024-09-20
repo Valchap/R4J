@@ -54,9 +54,6 @@ public class DataCallBuilder
     }
     };
     
-    // Create all-trusting host name verifier
-    private static final HostnameVerifier allHostsValid = (hostname, session) -> true;
-    
     static
     {
         try
@@ -77,8 +74,6 @@ public class DataCallBuilder
         RateLimiter limiter = DataCall.getLimiter().get(server).get(endpoint);
         limiter.updatePermitsTakenPerX(DataCall.getCallData().get(server).get(endpoint));
     }
-    
-    private static final Map<URLEndpoint, AtomicLong> requestCount = new HashMap<>();
     
     /**
      * Puts together all the data, and then returns an object representing the JSON from the call
@@ -306,52 +301,6 @@ public class DataCallBuilder
         return Utils.getGson().toJson(elem);
     }
     
-    private String postProcessPerkPath(String returnValue)
-    {
-        JsonObject elem     = (JsonObject) JsonParser.parseString(returnValue);
-        String     pathName = elem.get("name").getAsString();
-        String     pathId   = elem.get("id").getAsString();
-        
-        JsonArray slots = elem.getAsJsonArray("slots");
-        for (JsonElement slot : slots)
-        {
-            JsonArray runes = slot.getAsJsonObject().getAsJsonArray("runes");
-            for (JsonElement rune : runes)
-            {
-                JsonObject obj = (JsonObject) rune;
-                obj.addProperty("runePathName", pathName);
-                obj.addProperty("runePathId", pathId);
-            }
-        }
-        
-        return Utils.getGson().toJson(elem);
-    }
-    
-    private String postProcessPerkPaths(String returnValue)
-    {
-        JsonArray element = (JsonArray) JsonParser.parseString(returnValue);
-        
-        for (JsonElement elem : element)
-        {
-            String pathName = elem.getAsJsonObject().get("name").getAsString();
-            String pathId   = elem.getAsJsonObject().get("id").getAsString();
-            
-            JsonArray slots = elem.getAsJsonObject().getAsJsonArray("slots");
-            for (JsonElement slot : slots)
-            {
-                JsonArray runes = slot.getAsJsonObject().getAsJsonArray("runes");
-                for (JsonElement rune : runes)
-                {
-                    JsonObject obj = (JsonObject) rune;
-                    obj.addProperty("runePathName", pathName);
-                    obj.addProperty("runePathId", pathId);
-                }
-            }
-        }
-        
-        return Utils.getGson().toJson(element);
-    }
-    
     private String postProcessSummoner(String returnValue)
     {
         JsonObject element = (JsonObject) JsonParser.parseString(returnValue);
@@ -496,66 +445,51 @@ public class DataCallBuilder
      */
     private DataCallResponse getResponse(final String url)
     {
-        final StringBuilder data = new StringBuilder();
         try
-        {
-            final HttpURLConnection con = (HttpURLConnection) new URL(url).openConnection();
+        {        	
+            final HttpURLConnection con = (HttpURLConnection) new URI(url).toURL().openConnection();
             
             con.setUseCaches(false);
             con.setDefaultUseCaches(false);
             con.setRequestProperty("User-Agent", "R4J");
-            con.setRequestProperty("Accept-Charset", "ISO-8859-1,utf-8");
-            con.setRequestProperty("Accept-Language", "en-US");
-            con.setRequestProperty("Cache-Control", "no-store,max-age=0,no-cache");
-            con.setRequestProperty("Expires", "0");
-            con.setRequestProperty("Pragma", "no-cache");
+            con.setRequestProperty("Cache-Control", "no-store");
             con.setRequestProperty("Connection", "keep-alive");
-            con.setRequestProperty("Content-Type", "application/json");
             con.setConnectTimeout(this.dc.getConnectTimeout());
             con.setReadTimeout(this.dc.getReadTimeout());
+            
             this.dc.getUrlHeaders().forEach(con::setRequestProperty);
             
-            if (requestMethod.equalsIgnoreCase("PATCH"))
-            {
-                con.setRequestProperty("X-HTTP-Method-Override", "PATCH");
-                con.setRequestMethod("POST");
-            } else
-            {
-                con.setRequestMethod(requestMethod);
-            }
+            con.setRequestMethod(requestMethod);
             
-            StringBuilder sb = new StringBuilder();
-            con.getRequestProperties().forEach((key, value) -> sb.append(String.format(Constants.TABBED2X_VERBOSE_STRING_FORMAT, key, value)).append("\n"));
-            
-            String printMe = new StringBuilder("\n")
+            StringBuilder sb = new StringBuilder("\n")
                     .append(String.format(Constants.TABBED_VERBOSE_STRING_FORMAT, "Url", url)).append("\n")
                     .append(String.format(Constants.TABBED_VERBOSE_STRING_FORMAT, "Request Method", con.getRequestMethod())).append("\n")
                     .append(String.format(Constants.TABBED_VERBOSE_STRING_FORMAT, "POST data", this.postData)).append("\n")
-                    .append(String.format(Constants.TABBED_VERBOSE_STRING_FORMAT, "Request Headers", "")).append("\n")
-                    .append(sb).toString();
+                    .append(String.format(Constants.TABBED_VERBOSE_STRING_FORMAT, "Request Headers", "")).append("\n");
             
-            logger.debug(printMe);
-            
-            
+            con.getRequestProperties().forEach((key, value) -> sb.append(String.format(Constants.TABBED2X_VERBOSE_STRING_FORMAT, key, value)).append("\n"));
+
+            logger.debug(sb.toString());
+
             if (null != this.postData && !this.postData.isEmpty())
             {
+                con.setRequestProperty("Content-Type", "application/json");
+            	
                 con.setDoOutput(true);
-                final DataOutputStream writer = new DataOutputStream(con.getOutputStream());
-                writer.writeBytes(this.postData);
-                writer.flush();
+                
+                OutputStream writer = con.getOutputStream();
+                
+                writer.write(this.postData.getBytes(StandardCharsets.UTF_8));
+
                 writer.close();
             }
             
-            con.connect();
-            
-            StringBuilder sb2 = new StringBuilder("\n");
-            con.getHeaderFields().forEach((key, value) -> sb2.append(String.format(Constants.TABBED2X_VERBOSE_STRING_FORMAT, key, value)).append("\n"));
-            
-            String printMe2 = new StringBuilder("\n").append(String.format(Constants.TABBED_VERBOSE_STRING_FORMAT, "Response Headers", ""))
-                                                     .append(sb2)
-                                                     .toString();
-            logger.debug(printMe2);
-            
+            StringBuilder sb2 = new StringBuilder("\n").append(String.format(Constants.TABBED_VERBOSE_STRING_FORMAT, "Response Headers", ""))
+                    .append("\n");                   
+                    
+                    con.getHeaderFields().forEach((key, value) -> sb2.append(String.format(Constants.TABBED2X_VERBOSE_STRING_FORMAT, key, value)).append("\n"));
+                    
+            logger.debug(sb2.toString());
             
             String appA    = con.getHeaderField("X-App-Rate-Limit");
             String appB    = con.getHeaderField("X-App-Rate-Limit-Count");
@@ -591,7 +525,9 @@ public class DataCallBuilder
                 logger.info("You are using a deprecated method, this method will stop working at: {}", timeout);
             }
             
-            if (con.getResponseCode() == 429)
+            int responseCode = con.getResponseCode();
+            
+            if (responseCode == 429)
             {
                 final RateLimitType limitType = RateLimitType.getBestMatch(con.getHeaderField("X-Rate-Limit-Type"));
                 
@@ -620,33 +556,32 @@ public class DataCallBuilder
                     limter.resetCalls();
                 }
                 
-                return new DataCallResponse(con.getResponseCode(), reason);
+                return new DataCallResponse(responseCode, reason);
             }
             
-            if (con.getResponseCode() == 204)
+            if (responseCode == 204)
             {
-                return new DataCallResponse(con.getResponseCode(), "");
+                return new DataCallResponse(responseCode, "");
             }
             
-            InputStream stream = (con.getResponseCode() <= 399) ? con.getInputStream() : con.getErrorStream();
+            InputStream stream = (responseCode <= 399) ? con.getInputStream() : con.getErrorStream();
             
             if (stream == null)
             {
-                return new DataCallResponse(con.getResponseCode(), "Unable to read stream!");
+                return new DataCallResponse(responseCode, "Unable to read stream!");
             }
             
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8)))
-            {
-                br.lines().forEach(data::append);
-            }
+            String data = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
             
-            con.disconnect();
+            stream.close();
             
-            return new DataCallResponse(con.getResponseCode(), data.toString());
+            return new DataCallResponse(responseCode, data);
         } catch (final IOException e)
         {
             throw new APIResponseException(APIHTTPErrorReason.ERROR_599, APIHTTPErrorReason.ERROR_599.getReason());
-        }
+        } catch (URISyntaxException e) {
+        	throw new RuntimeException(e);
+		}
     }
     
     private void createRatelimiterIfMissing(String methodA, Enum platform, Enum endpoint)
