@@ -452,8 +452,6 @@ public class DataCallBuilder
             con.setUseCaches(false);
             con.setDefaultUseCaches(false);
             con.setRequestProperty("User-Agent", "R4J");
-            con.setRequestProperty("Cache-Control", "no-store");
-            con.setRequestProperty("Connection", "keep-alive");
             con.setConnectTimeout(this.dc.getConnectTimeout());
             con.setReadTimeout(this.dc.getReadTimeout());
             
